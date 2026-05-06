@@ -17,59 +17,34 @@ import ExecutiveReport from '@/components/ExecutiveReport';
 import Playbook from '@/components/Playbook';
 import { Flame, FileText, BookOpen } from 'lucide-react';
 
-// Static mode: loads all data from pre-generated JSONs
-// This page is used for GitHub Pages export (identical to the main dashboard)
-
 type Tab = 'campaign' | 'executive' | 'playbook';
 
 export default function StaticDashboard() {
   const [activeTab, setActiveTab] = useState<Tab>('campaign');
-  const [allData, setAllData] = useState<any>(null);
-  const [campaigns, setCampaigns] = useState<any[]>([]);
+  const [fullData, setFullData] = useState<any>(null);
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
-  const [selectedData, setSelectedData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function load() {
-      // Try without basePath first (Vercel), then with basePath (GitHub Pages)
-      let execRes, campRes;
+      // Try root first (Vercel), then /virales/ (GitHub Pages)
+      let data;
       try {
-        [execRes, campRes] = await Promise.all([
-          fetch('/data.json').then(r => { if (!r.ok) throw new Error(); return r.json(); }),
-          fetch('/campaign-data.json').then(r => { if (!r.ok) throw new Error(); return r.json(); }),
-        ]);
+        const r = await fetch('/full-data.json');
+        if (!r.ok) throw new Error();
+        data = await r.json();
       } catch {
-        [execRes, campRes] = await Promise.all([
-          fetch('/virales/data.json').then(r => r.json()),
-          fetch('/virales/campaign-data.json').then(r => r.json()),
-        ]);
+        const r = await fetch('/virales/full-data.json');
+        data = await r.json();
       }
-      setAllData(execRes);
-      const campList = (campRes.campaigns || []).map((c: any, i: number) => ({
-        id: `${c.name}_${c.date}`,
-        fechaInicio: c.date,
-        fechaFin: c.date,
-        nombre: c.name,
-        syncIds: c.syncIds || [],
-        _fullData: c,
-        _index: i,
-      }));
-      setCampaigns(campList);
-      if (campList.length > 0) {
-        setSelectedCampaign(campList[0]);
-        setSelectedData(campRes.campaigns[0]);
-      }
+      setFullData(data);
+      setCampaigns(data.campaigns || []);
+      if (data.campaigns?.length > 0) setSelectedCampaign(data.campaigns[0]);
       setLoading(false);
     }
     load();
   }, []);
-
-  const handleSelectCampaign = (camp: Campaign) => {
-    setSelectedCampaign(camp);
-    const idx = campaigns.findIndex(c => c.id === camp.id);
-    if (idx >= 0) setSelectedData((campaigns[idx] as any)._fullData);
-  };
 
   if (loading) {
     return (
@@ -82,55 +57,19 @@ export default function StaticDashboard() {
     );
   }
 
-  // Build KPI data from selected campaign
-  const kpiData = selectedData ? {
-    gmvTotal: selectedData.gmv || 0,
-    unitsSold: selectedData.units || 0,
-    discountSpend: selectedData.discount || 0,
-    uniqueUsers: (selectedData.users?.newTurbo || 0) + (selectedData.users?.reactTurbo || 0) + (selectedData.users?.existTurbo || 0),
-    totalOrders: selectedData.orders || 0,
-    newUsers: selectedData.users?.newTurbo || 0,
-    retainedUsers: selectedData.users?.existTurbo || 0,
-    reactivatedUsers: selectedData.users?.reactTurbo || 0,
-    cac: 0,
-    productOnlyRoi: selectedData.roi || 0,
-    basketAdjustedRoi: selectedData.roi || 0,
-    newToProduct: 0, occasionalBuyer: 0, frequentBuyer: 0,
-  } : null;
-
-  const cannibData = selectedData?.cannibalization ? {
-    data: selectedData.cannibalization.data || [],
-    baseline: selectedData.cannibalization.baseline || { avgUnits: 0, avgGmv: 0 },
-    incrementalGmv: selectedData.gmv - (selectedData.cannibalization.baseline?.avgGmv || 0),
-    viralMultiplier: selectedData.cannibalization.viralMultiplier || selectedData.multiplier || 0,
-    postViralVsBaseline: selectedData.cannibalization.postViralVsBaseline || selectedData.postDeclinePct || 0,
-  } : null;
-
-  const retentionData = selectedData?.users ? {
-    segments: [
-      { userType: 'NEW_TO_TURBO', cohortSize: selectedData.users.newTurbo || 0, ret15dPct: 0, ret30dPct: selectedData.users.newRet30dPct || 0, ret45dPct: 0, ret60dPct: 0, avgOrders60d: 0, avgLtv60d: 0 },
-      { userType: 'REACTIVATED_TURBO', cohortSize: selectedData.users.reactTurbo || 0, ret15dPct: 0, ret30dPct: 0, ret45dPct: 0, ret60dPct: 0, avgOrders60d: 0, avgLtv60d: 0 },
-      { userType: 'EXISTING_TURBO', cohortSize: selectedData.users.existTurbo || 0, ret15dPct: 0, ret30dPct: 0, ret45dPct: 0, ret60dPct: 0, avgOrders60d: 0, avgLtv60d: 0 },
-    ],
-    totalCohort: (selectedData.users.newTurbo||0) + (selectedData.users.reactTurbo||0) + (selectedData.users.existTurbo||0),
-    trulyNewCount: selectedData.users.newTurbo || 0,
-    existingActivePct: 0,
-    benchmark: { ret15d: 12, ret30d: 20 },
-    qualityGap: (selectedData.users.newRet30dPct || 0) - 20,
-    daysSinceViral: 60,
-    maturity15: true, maturity30: true, maturity45: true, maturity60: true,
-  } : null;
-
-  const demandShiftData = selectedData ? {
-    pre: { units: 0, gmv: 0, days: 30, dailyAvgUnits: 0, dailyAvgGmv: selectedData.baselineAvgGmv || 0 },
-    viral: { units: selectedData.units || 0, gmv: selectedData.gmv || 0 },
-    post: { units: 0, gmv: 0, days: 30, dailyAvgUnits: 0, dailyAvgGmv: selectedData.postAvgGmv || 0 },
-    total: { actualUnits: 0, actualGmv: 0, expectedUnits: 0, expectedGmv: 0, days: 61 },
-    netUnitsImpact: 0, netGmvImpact: 0,
-    netUnitsPct: selectedData.dsNetUnitsPct || 0, netGmvPct: 0,
-    postDeclinePct: selectedData.postDeclinePct || 0,
-    verdict: selectedData.dsVerdict || 'NEUTRAL',
-  } : null;
+  // Get data for selected campaign — EXACT same data as the API returns
+  const campId = selectedCampaign?.id || '';
+  const cd = fullData?.campaignData?.[campId] || {};
+  const kpiData = cd.impact || null;
+  const cannibData = cd.cannibalization || null;
+  const retentionData = cd.retention || null;
+  const postDemandData = cd.postDemand || null;
+  const crossBasketData = cd.crossBasket || null;
+  const stockoutData = cd.stockout || null;
+  const productData = cd.productAnalysis || null;
+  const repeatData = cd.repeatPurchase || null;
+  const demandShiftData = cd.demandShift || null;
+  const executiveData = fullData?.executive || null;
 
   return (
     <div className="min-h-screen bg-[#0B0D14] p-4 md:p-8">
@@ -138,7 +77,7 @@ export default function StaticDashboard() {
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl gradient-orange flex items-center justify-center pulse-glow"><Flame className="w-5 h-5 text-white" /></div>
           <div><h1 className="text-2xl font-bold text-[var(--foreground)]">Virales</h1><p className="text-xs text-[var(--text-muted)]">Growth Analytics Dashboard | MX</p></div>
-          <span className="ml-auto text-xs text-[var(--text-muted)]">Actualizado: {allData?.generatedAt ? new Date(allData.generatedAt).toLocaleString('es-MX') : ''}</span>
+          <span className="ml-auto text-xs text-[var(--text-muted)]">{fullData?.generatedAt ? `Actualizado: ${new Date(fullData.generatedAt).toLocaleString('es-MX')}` : ''}</span>
         </div>
       </header>
 
@@ -150,60 +89,62 @@ export default function StaticDashboard() {
 
       {activeTab === 'campaign' && (
         <div className="space-y-8 animate-fade-in">
-          <CampaignSelector campaigns={campaigns} selected={selectedCampaign} onSelect={handleSelectCampaign} />
+          <CampaignSelector campaigns={campaigns} selected={selectedCampaign} onSelect={setSelectedCampaign} />
 
           <section>
             <h2 className="text-lg font-semibold text-[var(--foreground)] mb-4">El Gancho: Impacto Día Cero</h2>
-            <KPICards data={kpiData} loading={false} />
+            <KPICards data={kpiData} loading={!kpiData} />
             <div className="mt-4">
-              <UserMixDonut newUsers={kpiData?.newUsers||0} retainedUsers={kpiData?.retainedUsers||0} reactivatedUsers={kpiData?.reactivatedUsers||0} newToProduct={0} occasionalBuyer={0} frequentBuyer={0} loading={false} />
+              <UserMixDonut
+                newUsers={kpiData?.newUsers || 0}
+                retainedUsers={kpiData?.retainedUsers || 0}
+                reactivatedUsers={kpiData?.reactivatedUsers || 0}
+                newToProduct={(kpiData as any)?.newToProduct || 0}
+                occasionalBuyer={(kpiData as any)?.occasionalBuyer || 0}
+                frequentBuyer={(kpiData as any)?.frequentBuyer || 0}
+                loading={!kpiData}
+              />
             </div>
           </section>
 
-          {cannibData && (
-            <section>
-              <h2 className="text-lg font-semibold text-[var(--foreground)] mb-4">La Verdad: Canibalización e Incrementalidad</h2>
-              <CannibalizationChart data={cannibData.data} baselineAvgGmv={cannibData.baseline.avgGmv} incrementalGmv={cannibData.incrementalGmv} viralMultiplier={cannibData.viralMultiplier} postViralVsBaseline={cannibData.postViralVsBaseline} loading={false} />
-            </section>
-          )}
-
-          {demandShiftData && (
-            <section>
-              <h2 className="text-lg font-semibold text-[var(--foreground)] mb-4">Demand Shift: Balance Total</h2>
-              <DemandShiftAnalysis data={demandShiftData} loading={false} discountSpend={kpiData?.discountSpend||0} />
-            </section>
-          )}
-
-          {retentionData && (
-            <section>
-              <h2 className="text-lg font-semibold text-[var(--foreground)] mb-4">Retención Real: ¿El Viral Adquiere Usuarios de Calidad?</h2>
-              <RetentionBySegment segments={retentionData.segments} totalCohort={retentionData.totalCohort} trulyNewCount={retentionData.trulyNewCount} existingActivePct={retentionData.existingActivePct} benchmark={retentionData.benchmark} qualityGap={retentionData.qualityGap} discountSpend={kpiData?.discountSpend||0} daysSinceViral={retentionData.daysSinceViral} maturity15={true} maturity30={true} loading={false} />
-            </section>
-          )}
+          <section>
+            <h2 className="text-lg font-semibold text-[var(--foreground)] mb-4">La Verdad: Canibalización e Incrementalidad</h2>
+            <CannibalizationChart data={cannibData?.data || []} baselineAvgGmv={cannibData?.baseline?.avgGmv || 0} incrementalGmv={cannibData?.incrementalGmv || 0} viralMultiplier={cannibData?.viralMultiplier || 0} postViralVsBaseline={cannibData?.postViralVsBaseline || 0} loading={!cannibData} />
+          </section>
 
           <section>
             <h2 className="text-lg font-semibold text-[var(--foreground)] mb-4">Impacto Post-Viral: ¿Migración o Generación?</h2>
-            <PostViralDemand data={selectedData ? { data: selectedData.cannibalization?.data?.filter((d:any)=>d.dayIndex>=-14&&d.dayIndex<=14)||[], baseline:{gmv:selectedData.baselineAvgGmv||0,units:0,users:0}, postViral:{avgGmv:selectedData.postAvgGmv||0,avgUnits:0,avgUsers:0}, incrementalFromViral:selectedData.gmv-(selectedData.baselineAvgGmv||0), sustainedUplift:selectedData.postDeclinePct||0, daysToNormalize:selectedData.postDeclinePct<-10?3:null, isJustAPeak:(selectedData.postDeclinePct||0)<-10 } : null} loading={false} />
+            <PostViralDemand data={postDemandData} loading={!postDemandData} />
+          </section>
+
+          <section>
+            <h2 className="text-lg font-semibold text-[var(--foreground)] mb-4">Demand Shift: Balance Total (30d pre + viral + 30d post)</h2>
+            <DemandShiftAnalysis data={demandShiftData} loading={!demandShiftData} discountSpend={kpiData?.discountSpend || 0} />
+          </section>
+
+          <section>
+            <h2 className="text-lg font-semibold text-[var(--foreground)] mb-4">Retención Real: ¿El Viral Adquiere Usuarios de Calidad?</h2>
+            <RetentionBySegment segments={retentionData?.segments || []} totalCohort={retentionData?.totalCohort || 0} trulyNewCount={retentionData?.trulyNewCount || 0} existingActivePct={retentionData?.existingActivePct || 0} benchmark={retentionData?.benchmark || { ret15d: 12, ret30d: 20 }} qualityGap={retentionData?.qualityGap || 0} discountSpend={kpiData?.discountSpend || 0} daysSinceViral={retentionData?.daysSinceViral || 0} maturity15={retentionData?.maturity15 ?? true} maturity30={retentionData?.maturity30 ?? true} loading={!retentionData} />
           </section>
 
           <section>
             <h2 className="text-lg font-semibold text-[var(--foreground)] mb-4">Efecto Hábito: Recompra del Mismo Producto</h2>
-            <RepeatPurchase data={{totalViralBuyers:(selectedData?.users?.newTurbo||0)+(selectedData?.users?.reactTurbo||0)+(selectedData?.users?.existTurbo||0), repeatBuyers:Math.round(((selectedData?.users?.newTurbo||0)+(selectedData?.users?.reactTurbo||0)+(selectedData?.users?.existTurbo||0))*0.39), repeatRate:39, totalRepeatOrders:0, totalRepeatGmv:0, fullPriceOrders:58, discountedOrders:42, fullPricePct:58, fullPriceGmv:(selectedData?.gmv||0)*0.15, discountedGmv:0}} loading={false} />
+            <RepeatPurchase data={repeatData} loading={!repeatData} />
           </section>
 
           <section>
             <h2 className="text-lg font-semibold text-[var(--foreground)] mb-4">Cross-Basket: ¿Qué Más Compran Después?</h2>
-            <CrossBasketAnalysis data={{totalViralUsers:(selectedData?.users?.newTurbo||0)+(selectedData?.users?.reactTurbo||0)+(selectedData?.users?.existTurbo||0), usersWithCompanion:Math.round(((selectedData?.users?.newTurbo||0)+(selectedData?.users?.reactTurbo||0)+(selectedData?.users?.existTurbo||0))*0.33), companionPenetration:33, totalCompanionGmv:(selectedData?.gmv||0)*0.15, gmvHabitual:(selectedData?.gmv||0)*0.10, gmvNewCategory:(selectedData?.gmv||0)*0.05, trueCrossSellPct:34, habitualPct:66, totalCategories:12, newCategories:4, topCategories:[]}} loading={false} />
+            <CrossBasketAnalysis data={crossBasketData} loading={!crossBasketData} />
           </section>
 
           <section>
-            <h2 className="text-lg font-semibold text-[var(--foreground)] mb-4">Fricción Operativa: Stock</h2>
-            <OperationsAnalysis data={{totalWarehouses:60, whWithStockout:Math.round(60*0.3), totalProductsWithStock:0, totalProductsSoldOut:0, mixAffectedPct:18.5, mixFullCoveragePct:81.5, totalOpening:0, totalClosing:0, unitsSold:selectedData?.units||0, cityBreakdown:[], opportunity:{totalActiveWh:60,whWithStock:47,whNoStock:13,stockedCapacity:450000,unstockedCapacity:27000,estimatedLostGmv:(selectedData?.gmv||0)*0.07,conversionRate:0.7}}} loading={false} />
+            <h2 className="text-lg font-semibold text-[var(--foreground)] mb-4">Fricción Operativa: Stock por Ciudad</h2>
+            <OperationsAnalysis data={stockoutData} loading={!stockoutData} />
           </section>
 
           <section>
             <h2 className="text-lg font-semibold text-[var(--foreground)] mb-4">Análisis 360° de Productos</h2>
-            <ProductAnalysis data={{products:[]}} loading={false} />
+            <ProductAnalysis data={productData} loading={!productData} />
           </section>
         </div>
       )}
@@ -212,8 +153,8 @@ export default function StaticDashboard() {
         <div className="space-y-8 animate-fade-in">
           <section>
             <h2 className="text-lg font-semibold text-[var(--foreground)] mb-2">Executive Report: ¿Funcionan los Virales?</h2>
-            <p className="text-sm text-[var(--text-muted)] mb-6">Análisis consolidado de las {campaigns.length} campañas.</p>
-            <ExecutiveReport data={allData} loading={false} />
+            <p className="text-sm text-[var(--text-muted)] mb-6">Análisis consolidado de las {campaigns.length} campañas del programa.</p>
+            <ExecutiveReport data={executiveData} loading={!executiveData} />
           </section>
         </div>
       )}
