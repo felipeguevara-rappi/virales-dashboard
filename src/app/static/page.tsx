@@ -32,11 +32,19 @@ export default function StaticDashboard() {
 
   useEffect(() => {
     async function load() {
-      const base = '/virales';
-      const [execRes, campRes] = await Promise.all([
-        fetch(`${base}/data.json`).then(r => r.json()),
-        fetch(`${base}/campaign-data.json`).then(r => r.json()),
-      ]);
+      // Try without basePath first (Vercel), then with basePath (GitHub Pages)
+      let execRes, campRes;
+      try {
+        [execRes, campRes] = await Promise.all([
+          fetch('/data.json').then(r => { if (!r.ok) throw new Error(); return r.json(); }),
+          fetch('/campaign-data.json').then(r => { if (!r.ok) throw new Error(); return r.json(); }),
+        ]);
+      } catch {
+        [execRes, campRes] = await Promise.all([
+          fetch('/virales/data.json').then(r => r.json()),
+          fetch('/virales/campaign-data.json').then(r => r.json()),
+        ]);
+      }
       setAllData(execRes);
       const campList = (campRes.campaigns || []).map((c: any, i: number) => ({
         id: `${c.name}_${c.date}`,

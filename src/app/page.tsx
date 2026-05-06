@@ -1,6 +1,5 @@
-import Dashboard from '@/components/Dashboard';
+import StaticDashboard from './static/page';
 
 export default function Home() {
-  return <Dashboard />;
+  return <StaticDashboard />;
 }
-
