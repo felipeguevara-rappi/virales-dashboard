@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { Scale, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 
@@ -24,7 +25,7 @@ interface DemandShiftAnalysisProps {
 
 export default function DemandShiftAnalysis({ data, loading, discountSpend }: DemandShiftAnalysisProps) {
   if (loading) return <div className="glass-card p-6 h-[300px] flex items-center justify-center"><div className="animate-pulse text-[var(--text-muted)]">Analizando demand shift...</div></div>;
-  if (!data) return <div className="glass-card p-6 h-[200px] flex items-center justify-center"><p className="text-[var(--text-muted)]">Selecciona una campaña</p></div>;
+  if (!data || !data.total) return <div className="glass-card p-6 h-[200px] flex items-center justify-center"><p className="text-[var(--text-muted)]">{data?.verdict ? `Veredicto: ${data.verdict} (${data.netUnitsPct?.toFixed(1)}%)` : 'Selecciona una campaña'}</p></div>;
 
   const VerdictIcon = data.verdict === 'GENERATION' ? TrendingUp : data.verdict === 'DESTRUCTION' ? TrendingDown : Minus;
   const verdictColor = data.verdict === 'GENERATION' ? '#10B981' : data.verdict === 'DESTRUCTION' ? '#EF4444' : '#F97316';
@@ -32,17 +33,17 @@ export default function DemandShiftAnalysis({ data, loading, discountSpend }: De
   const verdictDesc = data.verdict === 'GENERATION' ? 'El viral generó más unidades de las esperadas' : data.verdict === 'DESTRUCTION' ? 'El viral concentró demanda pero se perdieron unidades netas' : 'El viral concentró ~30d de venta en 1 día. No genera ni destruye — solo mueve en el tiempo.';
 
   // Comparison chart: actual vs expected
-  const comparisonData = [
+  const comparisonData = useMemo(() => [
     { name: 'Esperado sin viral', units: Math.round(data.total.expectedUnits / 1000), fill: '#6B7280' },
     { name: 'Real (con viral)', units: Math.round(data.total.actualUnits / 1000), fill: verdictColor },
-  ];
+  ], [data.total.expectedUnits, data.total.actualUnits, verdictColor]);
 
   // Period breakdown
-  const periodData = [
+  const periodData = useMemo(() => [
     { name: 'Pre-30d\n(diario)', value: Math.round(data.pre.dailyAvgUnits), fill: '#8B5CF6' },
     { name: 'Día Viral', value: Math.round(data.viral.units), fill: '#F97316' },
     { name: 'Post-30d\n(diario)', value: Math.round(data.post.dailyAvgUnits), fill: data.postDeclinePct < -10 ? '#EF4444' : '#10B981' },
-  ];
+  ], [data.pre.dailyAvgUnits, data.viral.units, data.post.dailyAvgUnits, data.postDeclinePct]);
 
   // True cost of the viral
   const trueCost = data.netUnitsImpact <= 0 && discountSpend > 0

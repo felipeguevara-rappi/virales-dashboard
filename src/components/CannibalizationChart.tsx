@@ -1,6 +1,7 @@
 'use client';
 
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Area, ComposedChart } from 'recharts';
+import { useMemo } from 'react';
+import { Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Area, ComposedChart } from 'recharts';
 import { TrendingUp, Zap } from 'lucide-react';
 import { CannibalizationPoint } from '@/lib/types';
 
@@ -31,11 +32,11 @@ export default function CannibalizationChart({ data, baselineAvgGmv, incremental
   }
 
   // Normalize: express everything as % of baseline
-  const chartData = data.map(d => ({
+  const chartData = useMemo(() => data.map(d => ({
     ...d,
     gmvNormalized: baselineAvgGmv > 0 ? (d.gmv / baselineAvgGmv) * 100 : 0,
     baseline: 100,
-  }));
+  })), [data, baselineAvgGmv]);
 
   const hasCannibalization = postViralVsBaseline < -5; // more than 5% drop = cannibalization
 

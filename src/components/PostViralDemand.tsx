@@ -1,6 +1,7 @@
 'use client';
 
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Area, ComposedChart, BarChart, Bar } from 'recharts';
+import { useMemo } from 'react';
+import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ComposedChart, BarChart, Bar, Area, Line, ReferenceLine } from 'recharts';
 import { TrendingUp, TrendingDown, Activity, Users } from 'lucide-react';
 
 interface StockeoAnalysis {
@@ -37,21 +38,21 @@ export default function PostViralDemand({ data, loading }: PostViralDemandProps)
     return <div className="glass-card p-6 h-[300px] flex items-center justify-center"><p className="text-[var(--text-muted)]">Selecciona una campaña</p></div>;
   }
 
-  const chartData = data.data.map(d => ({
+  const chartData = useMemo(() => data.data.map(d => ({
     dayIndex: d.dayIndex,
     gmvPct: data.baseline.gmv > 0 ? (d.gmv / data.baseline.gmv) * 100 : 0,
     usersPct: data.baseline.users > 0 ? (d.users / data.baseline.users) * 100 : 0,
-  }));
+  })), [data.data, data.baseline.gmv, data.baseline.users]);
 
   const verdict = data.isJustAPeak;
   const uplift = data.sustainedUplift;
   const stockeo = data.stockeoAnalysis;
 
   // Stockeo comparison chart data
-  const stockeoChartData = stockeo ? [
+  const stockeoChartData = useMemo(() => stockeo ? [
     { group: 'Viral', '7d Antes': stockeo.viralBefore, '7d Después': stockeo.viralAfter },
     { group: 'Control', '7d Antes': stockeo.controlBefore, '7d Después': stockeo.controlAfter },
-  ] : [];
+  ] : [], [stockeo]);
 
   return (
     <div className="space-y-4">

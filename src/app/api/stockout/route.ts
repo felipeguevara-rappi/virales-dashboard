@@ -167,80 +167,6 @@ export async function POST(request: NextRequest) {
       };
     } catch { /* optional */ }
 
-    // DOI Analysis: Days of Inventory pre, during, and post viral
-    let doiData: { day: string; dayIndex: number; stock: number; doi: number }[] = [];
-    let doiByProduct: { syncProductId: number; name: string; doiPre: number; doiViral: number; doiPost1: number; doiPost7: number; avgDailySales: number }[] = [];
-    try {
-      // Aggregate DOI timeline
-      const doiSql = `
-        WITH daily_stock AS (
-          SELECT ic.CREATED_AT AS DAY, SUM(ic.SUM_UNITS_CUMULADO) AS TOTAL_STOCK
-          FROM RP_SILVER_DB_PROD.TURBO_CORE.GLOBAL_INVENTORY_COST ic
-          JOIN RP_SILVER_DB_PROD.TURBO_CORE.GLOBAL_WAREHOUSE_NEW w ON ic.WAREHOUSE_ID = w.WAREHOUSE_ID AND w.COUNTRY = 'MX' AND w.IS_CEDI = FALSE AND w.WAREHOUSE_NAME NOT LIKE '%INACTIVE%'
-          WHERE ic.SYNC_PRODUCT_ID IN (${safeSyncIds}) AND ic.COUNTRY = 'MX'
-            AND ic.CREATED_AT BETWEEN DATEADD(day,-7,TO_DATE('${safeDate}')) AND DATEADD(day,7,TO_DATE('${safeDate}'))
-          GROUP BY 1
-        ),
-        baseline_avg AS (
-          SELECT ROUND(AVG(UNITS_SOLD), 1) AS AVG_DAILY FROM (
-            SELECT SUM(UNITS) AS UNITS_SOLD FROM RP_SILVER_DB_PROD.TURBO_CORE.GLOBAL_ORDER_DISCOUNTS
-            WHERE SYNC_PRODUCT_ID IN (${safeSyncIds}) AND COUNTRY = 'MX' AND COUNT_TO_GMV = TRUE
-              AND CREATED_AT BETWEEN DATEADD(day,-14,TO_DATE('${safeDate}')) AND DATEADD(day,-2,TO_DATE('${safeDate}'))
-            GROUP BY CREATED_AT
-          )
-        )
-        SELECT ds.DAY, ds.TOTAL_STOCK, ba.AVG_DAILY, ROUND(ds.TOTAL_STOCK / NULLIF(ba.AVG_DAILY, 0), 1) AS DOI
-        FROM daily_stock ds CROSS JOIN baseline_avg ba ORDER BY ds.DAY
-      `;
-      const doiRows = await executeQuery(doiSql);
-      const [vy, vm, vd] = safeDate.split('-').map(Number);
-      const viralTs = Date.UTC(vy, vm - 1, vd);
-      doiData = (doiRows as Record<string, unknown>[]).map(r => {
-        const rawDay = r.DAY;
-        let dayTs: number;
-        if (rawDay instanceof Date) { dayTs = rawDay.getTime(); } else { dayTs = new Date(String(rawDay).replace(/"/g, '') + 'T00:00:00Z').getTime(); }
-        return { day: new Date(dayTs).toISOString().slice(0, 10), dayIndex: Math.round((dayTs - viralTs) / 86400000), stock: Number(r.TOTAL_STOCK) || 0, doi: Number(r.DOI) || 0 };
-      });
-
-      // Per-product DOI
-      const doiProdSql = `
-        WITH product_stock AS (
-          SELECT ic.SYNC_PRODUCT_ID, ic.CREATED_AT, SUM(ic.SUM_UNITS_CUMULADO) AS STOCK
-          FROM RP_SILVER_DB_PROD.TURBO_CORE.GLOBAL_INVENTORY_COST ic
-          JOIN RP_SILVER_DB_PROD.TURBO_CORE.GLOBAL_WAREHOUSE_NEW w ON ic.WAREHOUSE_ID = w.WAREHOUSE_ID AND w.COUNTRY = 'MX' AND w.IS_CEDI = FALSE AND w.WAREHOUSE_NAME NOT LIKE '%INACTIVE%'
-          WHERE ic.SYNC_PRODUCT_ID IN (${safeSyncIds}) AND ic.COUNTRY = 'MX'
-            AND ic.CREATED_AT IN (DATEADD(day,-1,TO_DATE('${safeDate}')), TO_DATE('${safeDate}'), DATEADD(day,1,TO_DATE('${safeDate}')), DATEADD(day,7,TO_DATE('${safeDate}')))
-          GROUP BY 1, 2
-        ),
-        product_baseline AS (
-          SELECT SYNC_PRODUCT_ID, MAX(NAME) AS NAME, ROUND(SUM(UNITS) / 13.0, 1) AS AVG_DAILY
-          FROM RP_SILVER_DB_PROD.TURBO_CORE.GLOBAL_ORDER_DISCOUNTS
-          WHERE SYNC_PRODUCT_ID IN (${safeSyncIds}) AND COUNTRY = 'MX' AND COUNT_TO_GMV = TRUE
-            AND CREATED_AT BETWEEN DATEADD(day,-14,TO_DATE('${safeDate}')) AND DATEADD(day,-2,TO_DATE('${safeDate}'))
-          GROUP BY 1
-        )
-        SELECT pb.SYNC_PRODUCT_ID, pb.NAME, pb.AVG_DAILY,
-          MAX(CASE WHEN ps.CREATED_AT = DATEADD(day,-1,TO_DATE('${safeDate}')) THEN ROUND(ps.STOCK / NULLIF(pb.AVG_DAILY, 0), 1) END) AS DOI_PRE,
-          MAX(CASE WHEN ps.CREATED_AT = TO_DATE('${safeDate}') THEN ROUND(ps.STOCK / NULLIF(pb.AVG_DAILY, 0), 1) END) AS DOI_VIRAL,
-          MAX(CASE WHEN ps.CREATED_AT = DATEADD(day,1,TO_DATE('${safeDate}')) THEN ROUND(ps.STOCK / NULLIF(pb.AVG_DAILY, 0), 1) END) AS DOI_POST1,
-          MAX(CASE WHEN ps.CREATED_AT = DATEADD(day,7,TO_DATE('${safeDate}')) THEN ROUND(ps.STOCK / NULLIF(pb.AVG_DAILY, 0), 1) END) AS DOI_POST7
-        FROM product_baseline pb
-        LEFT JOIN product_stock ps ON ps.SYNC_PRODUCT_ID = pb.SYNC_PRODUCT_ID
-        GROUP BY 1, 2, 3
-        ORDER BY pb.AVG_DAILY DESC
-      `;
-      const doiProdRows = await executeQuery(doiProdSql);
-      doiByProduct = (doiProdRows as Record<string, unknown>[]).map(r => ({
-        syncProductId: Number(r.SYNC_PRODUCT_ID) || 0,
-        name: String(r.NAME || '').slice(0, 40),
-        doiPre: Number(r.DOI_PRE) || 0,
-        doiViral: Number(r.DOI_VIRAL) || 0,
-        doiPost1: Number(r.DOI_POST1) || 0,
-        doiPost7: Number(r.DOI_POST7) || 0,
-        avgDailySales: Number(r.AVG_DAILY) || 0,
-      }));
-    } catch { /* DOI optional */ }
-
     return NextResponse.json({
       totalWarehouses: row.TOTAL_WH || 0,
       whWithStockout: row.WH_WITH_STOCKOUT || 0,
@@ -253,8 +179,6 @@ export async function POST(request: NextRequest) {
       unitsSold,
       cityBreakdown,
       opportunity,
-      doiData,
-      doiByProduct,
     });
   } catch (error) {
     console.error('Stockout query error:', error);

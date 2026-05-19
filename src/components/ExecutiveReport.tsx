@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Cell, ComposedChart, Line, ScatterChart, Scatter, ZAxis, ReferenceLine } from 'recharts';
 import { TrendingUp, TrendingDown, Zap, AlertTriangle, CheckCircle, XCircle, DollarSign, Users, Package, Target } from 'lucide-react';
 
@@ -34,22 +35,26 @@ export default function ExecutiveReport({ data, loading }: ExecutiveReportProps)
   const verdictColor = kpis.netPositivePct >= 70 ? '#10B981' : kpis.netPositivePct >= 40 ? '#F97316' : '#EF4444';
   const VerdictIcon = kpis.netPositivePct >= 70 ? CheckCircle : kpis.netPositivePct >= 40 ? AlertTriangle : XCircle;
 
-  // Program Value Waterfall
-  const totalPostDip = campaigns.reduce((s, c) => s + c.postDip, 0);
-  const waterfallProgram = [
-    { name: 'GMV Viral', value: Math.round(kpis.totalGmv / 1000), fill: '#F97316' },
-    { name: '- Inversión', value: -Math.round(kpis.totalDiscount / 1000), fill: '#EF4444' },
-    { name: '- Post Dip', value: -Math.round(totalPostDip / 1000), fill: '#8B5CF6' },
-    { name: '= Net Value', value: Math.round(kpis.totalNetIncremental / 1000), fill: kpis.totalNetIncremental > 0 ? '#10B981' : '#EF4444' },
-  ];
+  /** Program P&L waterfall: GMV - discount - post dip = net value */
+  const waterfallProgram = useMemo(() => {
+    const totalPostDip = campaigns.reduce((s, c) => s + c.postDip, 0);
+    return [
+      { name: 'GMV Viral', value: Math.round(kpis.totalGmv / 1000), fill: '#F97316' },
+      { name: '- Inversión', value: -Math.round(kpis.totalDiscount / 1000), fill: '#EF4444' },
+      { name: '- Post Dip', value: -Math.round(totalPostDip / 1000), fill: '#8B5CF6' },
+      { name: '= Net Value', value: Math.round(kpis.totalNetIncremental / 1000), fill: kpis.totalNetIncremental > 0 ? '#10B981' : '#EF4444' },
+    ];
+  }, [campaigns, kpis.totalGmv, kpis.totalDiscount, kpis.totalNetIncremental]);
 
-  // Demand Quadrant: multiplier (X) vs post-viral dip % (Y)
-  const demandQuadrant = campaigns.filter(c => c.baselineAvgGmv > 0).map(c => ({
+  const totalPostDip = useMemo(() => campaigns.reduce((s, c) => s + c.postDip, 0), [campaigns]);
+
+  /** Demand quadrant: plots multiplier (X) vs post-viral change (Y) per campaign */
+  const demandQuadrant = useMemo(() => campaigns.filter(c => c.baselineAvgGmv > 0).map(c => ({
     x: c.multiplier,
     y: c.baselineAvgGmv > 0 ? ((c.postAvgGmv - c.baselineAvgGmv) / c.baselineAvgGmv) * 100 : 0,
     name: c.name.replace('VIRAL_DEAL_', '').slice(0, 10),
     isGood: c.netIncremental > 0,
-  }));
+  })), [campaigns]);
 
   // Classify campaigns into quadrants
   const pureGeneration = demandQuadrant.filter(d => d.x > 3 && d.y >= -10).length;
@@ -57,15 +62,15 @@ export default function ExecutiveReport({ data, loading }: ExecutiveReportProps)
   const lowImpact = demandQuadrant.filter(d => d.x <= 3).length;
 
   // Learning Curve
-  const learningData = campaigns.map((c, i) => ({
+  const learningData = useMemo(() => campaigns.map((c, i) => ({
     index: i + 1, roi: c.roi, name: c.name.replace('VIRAL_DEAL_', '').slice(0, 8), date: c.date.slice(5),
-  }));
+  })), [campaigns]);
 
   // Monthly trend
-  const trendData = monthlyData.map(m => ({
+  const trendData = useMemo(() => monthlyData.map(m => ({
     month: m.month.slice(5), 'GMV ($K)': Math.round(m.totalGmv / 1000),
     'Net Inc ($K)': Math.round(m.totalNetIncremental / 1000), 'ROI': Math.round(m.avgRoi * 10) / 10,
-  }));
+  })), [monthlyData]);
 
   // Prediction: linear trend of ROI
   const roiValues = campaigns.map(c => c.roi).filter(r => r > 0);
@@ -73,8 +78,8 @@ export default function ExecutiveReport({ data, loading }: ExecutiveReportProps)
   const avgEarlyRoi = roiValues.slice(0, 10).reduce((s, v) => s + v, 0) / Math.max(roiValues.slice(0, 10).length, 1);
   const roiTrend = avgRecentRoi - avgEarlyRoi;
 
-  // Top/bottom
-  const sorted = [...campaigns].filter(c => c.discount > 0).sort((a, b) => b.netIncremental - a.netIncremental);
+  /** Top/bottom campaigns sorted by net incremental value */
+  const sorted = useMemo(() => [...campaigns].filter(c => c.discount > 0).sort((a, b) => b.netIncremental - a.netIncremental), [campaigns]);
 
   return (
     <div className="space-y-6">

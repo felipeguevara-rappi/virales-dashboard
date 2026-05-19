@@ -31,8 +31,9 @@ export async function POST(request: NextRequest) {
         SELECT DISTINCT vo.APPLICATION_USER_ID, d_prev.CATEGORY_NAME
         FROM viral_orders vo
         JOIN RP_SILVER_DB_PROD.DES_PROD.ORDERS o_prev ON o_prev.APPLICATION_USER_ID = vo.APPLICATION_USER_ID AND o_prev.COUNTRY = 'MX'
-          AND o_prev.CREATED_AT::DATE BETWEEN DATEADD(day,-60,TO_DATE('${safeDate}')) AND DATEADD(day,-1,TO_DATE('${safeDate}'))
+          AND o_prev.CREATED_AT >= DATEADD(day,-60,TO_DATE('${safeDate}')) AND o_prev.CREATED_AT < TO_DATE('${safeDate}')
         JOIN RP_SILVER_DB_PROD.TURBO_CORE.GLOBAL_ORDER_DISCOUNTS d_prev ON d_prev.ORDER_ID = o_prev.ORDER_ID AND d_prev.COUNTRY = 'MX' AND d_prev.CATEGORY_NAME IS NOT NULL
+          AND d_prev.CREATED_AT BETWEEN DATEADD(day,-60,TO_DATE('${safeDate}')) AND DATEADD(day,-1,TO_DATE('${safeDate}'))
       )
       SELECT 
         COUNT(DISTINCT ci.APPLICATION_USER_ID) AS USERS_WITH_COMPANION,

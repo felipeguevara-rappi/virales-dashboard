@@ -1,21 +1,28 @@
 'use client';
 
+import { useMemo } from 'react';
 import { KPIData } from '@/lib/types';
 import { TrendingUp, ShoppingCart, DollarSign, Users, Package } from 'lucide-react';
 
 interface KPICardsProps {
   data: (KPIData & { companionGmv?: number; fullBasketGmv?: number; basketAdjustedRoi?: number; productOnlyRoi?: number; companionPct?: number }) | null;
   loading: boolean;
+  budgetMaker?: number;
+  budgetGrowth?: number;
 }
 
-export default function KPICards({ data, loading }: KPICardsProps) {
+export default function KPICards({ data, loading, budgetMaker = 0, budgetGrowth = 0 }: KPICardsProps) {
   const gmv = data?.gmvTotal || 0;
   const disc = data?.discountSpend || 0;
+  const growthSpend = data?.growthSpend || 0;
+  const makerSpend = data?.makerSpend || 0;
+  const growthBurnPct = budgetGrowth > 0 ? (growthSpend / budgetGrowth * 100) : 0;
+  const makerBurnPct = budgetMaker > 0 ? (makerSpend / budgetMaker * 100) : 0;
   const productRoi = data?.productOnlyRoi || (disc > 0 ? gmv / disc : 0);
   const basketRoi = data?.basketAdjustedRoi || productRoi;
   const companionGmv = data?.companionGmv || 0;
 
-  const cards = [
+  const cards = useMemo(() => [
     {
       label: 'GMV (sin IVA)',
       value: data ? `$${(gmv / 1000).toFixed(0)}K` : '--',
@@ -35,7 +42,8 @@ export default function KPICards({ data, loading }: KPICardsProps) {
     {
       label: 'Inversión Descuento',
       value: data ? `$${(disc / 1000).toFixed(0)}K` : '--',
-      sub: '',
+      sub: data && disc > 0 ? `Growth: $${(growthSpend / 1000).toFixed(0)}K (${(growthSpend / disc * 100).toFixed(0)}%) — Burn: ${growthBurnPct.toFixed(0)}% de $${(budgetGrowth / 1000).toFixed(0)}K` : '',
+      sub2: data && disc > 0 ? `Maker: $${(makerSpend / 1000).toFixed(0)}K (${(makerSpend / disc * 100).toFixed(0)}%) — Burn: ${makerBurnPct.toFixed(0)}% de $${(budgetMaker / 1000).toFixed(0)}K` : '',
       icon: TrendingUp,
       gradient: 'gradient-red',
       textGradient: 'text-[var(--accent-red)]',
@@ -56,7 +64,7 @@ export default function KPICards({ data, loading }: KPICardsProps) {
       gradient: 'gradient-purple',
       textGradient: 'text-gradient-purple',
     },
-  ];
+  ], [data, gmv, disc, growthSpend, makerSpend, growthBurnPct, makerBurnPct, budgetGrowth, budgetMaker, productRoi, basketRoi, companionGmv]);
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
@@ -76,7 +84,8 @@ export default function KPICards({ data, loading }: KPICardsProps) {
                 </div>
               </div>
               <p className={`text-xl font-bold ${card.textGradient}`}>{card.value}</p>
-              {card.sub && <p className="text-[10px] text-[var(--text-muted)] mt-1">{card.sub}</p>}
+              {card.sub && <p className="text-[8px] text-[var(--text-muted)] mt-1 leading-tight">{card.sub}</p>}
+              {'sub2' in card && card.sub2 && <p className="text-[8px] text-[var(--text-muted)] leading-tight">{card.sub2}</p>}
             </>
           )}
         </div>

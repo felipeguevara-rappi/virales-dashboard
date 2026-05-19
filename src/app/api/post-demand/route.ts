@@ -21,6 +21,7 @@ export async function POST(request: NextRequest) {
         COUNT(DISTINCT d.ORDER_ID) AS ORDERS
       FROM RP_SILVER_DB_PROD.TURBO_CORE.GLOBAL_ORDER_DISCOUNTS d
       LEFT JOIN RP_SILVER_DB_PROD.DES_PROD.ORDERS o ON o.ORDER_ID = d.ORDER_ID AND o.COUNTRY = 'MX'
+        AND o.CREATED_AT >= DATEADD(day, -14, TO_DATE('${safeDate}')) AND o.CREATED_AT < DATEADD(day, 15, TO_DATE('${safeDate}'))
       WHERE d.SYNC_PRODUCT_ID IN (${safeSyncIds}) AND d.COUNTRY = 'MX' AND d.COUNT_TO_GMV = TRUE
         AND d.CREATED_AT BETWEEN DATEADD(day, -14, TO_DATE('${safeDate}')) AND DATEADD(day, 14, TO_DATE('${safeDate}'))
       GROUP BY d.CREATED_AT
@@ -68,31 +69,32 @@ export async function POST(request: NextRequest) {
         SELECT DISTINCT o.APPLICATION_USER_ID
         FROM RP_SILVER_DB_PROD.TURBO_CORE.GLOBAL_ORDER_DISCOUNTS d
         JOIN RP_SILVER_DB_PROD.DES_PROD.ORDERS o ON o.ORDER_ID = d.ORDER_ID AND o.COUNTRY = 'MX'
+          AND o.CREATED_AT >= TO_DATE('${safeDate}') AND o.CREATED_AT < DATEADD(day, 1, TO_DATE('${safeDate}'))
         WHERE d.SYNC_PRODUCT_ID IN (${safeSyncIds}) AND d.CREATED_AT = TO_DATE('${safeDate}') AND d.COUNTRY = 'MX' AND d.COUNT_TO_GMV = TRUE AND o.APPLICATION_USER_ID IS NOT NULL
       ),
       control_users AS (
         SELECT APPLICATION_USER_ID FROM RP_SILVER_DB_PROD.DES_PROD.ORDERS
-        WHERE COUNTRY = 'MX' AND CREATED_AT::DATE BETWEEN DATEADD(day,-7,TO_DATE('${safeDate}')) AND DATEADD(day,-1,TO_DATE('${safeDate}'))
+        WHERE COUNTRY = 'MX' AND CREATED_AT >= DATEADD(day,-7,TO_DATE('${safeDate}')) AND CREATED_AT < TO_DATE('${safeDate}')
           AND APPLICATION_USER_ID NOT IN (SELECT APPLICATION_USER_ID FROM viral_users)
         GROUP BY 1 LIMIT 3000
       )
       SELECT 
         'VIRAL' AS COHORT,
-        COUNT(DISTINCT CASE WHEN o.CREATED_AT::DATE BETWEEN DATEADD(day,-7,TO_DATE('${safeDate}')) AND DATEADD(day,-1,TO_DATE('${safeDate}')) THEN o.ORDER_ID END) AS ORDERS_7D_BEFORE,
-        COUNT(DISTINCT CASE WHEN o.CREATED_AT::DATE BETWEEN DATEADD(day,1,TO_DATE('${safeDate}')) AND DATEADD(day,7,TO_DATE('${safeDate}')) THEN o.ORDER_ID END) AS ORDERS_7D_AFTER
+        COUNT(DISTINCT CASE WHEN o.CREATED_AT >= DATEADD(day,-7,TO_DATE('${safeDate}')) AND o.CREATED_AT < TO_DATE('${safeDate}') THEN o.ORDER_ID END) AS ORDERS_7D_BEFORE,
+        COUNT(DISTINCT CASE WHEN o.CREATED_AT > TO_DATE('${safeDate}') AND o.CREATED_AT < DATEADD(day, 8, TO_DATE('${safeDate}')) THEN o.ORDER_ID END) AS ORDERS_7D_AFTER
       FROM viral_users vu
       LEFT JOIN RP_SILVER_DB_PROD.DES_PROD.ORDERS o ON o.APPLICATION_USER_ID = vu.APPLICATION_USER_ID AND o.COUNTRY = 'MX'
-        AND o.CREATED_AT::DATE BETWEEN DATEADD(day,-7,TO_DATE('${safeDate}')) AND DATEADD(day,7,TO_DATE('${safeDate}'))
-        AND o.CREATED_AT::DATE != TO_DATE('${safeDate}')
+        AND o.CREATED_AT >= DATEADD(day,-7,TO_DATE('${safeDate}')) AND o.CREATED_AT < DATEADD(day, 8, TO_DATE('${safeDate}'))
+        AND NOT (o.CREATED_AT >= TO_DATE('${safeDate}') AND o.CREATED_AT < DATEADD(day, 1, TO_DATE('${safeDate}')))
       UNION ALL
       SELECT 
         'CONTROL' AS COHORT,
-        COUNT(DISTINCT CASE WHEN o.CREATED_AT::DATE BETWEEN DATEADD(day,-7,TO_DATE('${safeDate}')) AND DATEADD(day,-1,TO_DATE('${safeDate}')) THEN o.ORDER_ID END) AS ORDERS_7D_BEFORE,
-        COUNT(DISTINCT CASE WHEN o.CREATED_AT::DATE BETWEEN DATEADD(day,1,TO_DATE('${safeDate}')) AND DATEADD(day,7,TO_DATE('${safeDate}')) THEN o.ORDER_ID END) AS ORDERS_7D_AFTER
+        COUNT(DISTINCT CASE WHEN o.CREATED_AT >= DATEADD(day,-7,TO_DATE('${safeDate}')) AND o.CREATED_AT < TO_DATE('${safeDate}') THEN o.ORDER_ID END) AS ORDERS_7D_BEFORE,
+        COUNT(DISTINCT CASE WHEN o.CREATED_AT > TO_DATE('${safeDate}') AND o.CREATED_AT < DATEADD(day, 8, TO_DATE('${safeDate}')) THEN o.ORDER_ID END) AS ORDERS_7D_AFTER
       FROM control_users cu
       LEFT JOIN RP_SILVER_DB_PROD.DES_PROD.ORDERS o ON o.APPLICATION_USER_ID = cu.APPLICATION_USER_ID AND o.COUNTRY = 'MX'
-        AND o.CREATED_AT::DATE BETWEEN DATEADD(day,-7,TO_DATE('${safeDate}')) AND DATEADD(day,7,TO_DATE('${safeDate}'))
-        AND o.CREATED_AT::DATE != TO_DATE('${safeDate}')
+        AND o.CREATED_AT >= DATEADD(day,-7,TO_DATE('${safeDate}')) AND o.CREATED_AT < DATEADD(day, 8, TO_DATE('${safeDate}'))
+        AND NOT (o.CREATED_AT >= TO_DATE('${safeDate}') AND o.CREATED_AT < DATEADD(day, 1, TO_DATE('${safeDate}')))
     `;
 
     let stockeoAnalysis = { viralBefore: 0, viralAfter: 0, viralChange: 0, controlBefore: 0, controlAfter: 0, controlChange: 0, isStockeo: false };

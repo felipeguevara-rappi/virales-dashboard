@@ -1,22 +1,22 @@
 'use client';
 
-import { useState } from 'react';
-import { Campaign } from '@/lib/types';
+import { useState, useMemo } from 'react';
+import { CampaignWithMeta } from '@/lib/types';
 import { ChevronDown } from 'lucide-react';
 
 interface CampaignSelectorProps {
-  campaigns: Campaign[];
-  selected: Campaign | null;
-  onSelect: (campaign: Campaign) => void;
+  campaigns: CampaignWithMeta[];
+  selected: CampaignWithMeta | null;
+  onSelect: (campaign: CampaignWithMeta) => void;
 }
 
 export default function CampaignSelector({ campaigns, selected, onSelect }: CampaignSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
 
-  const filtered = campaigns.filter(c =>
+  const filtered = useMemo(() => campaigns.filter(c =>
     c.nombre.toLowerCase().includes(search.toLowerCase())
-  );
+  ), [campaigns, search]);
 
   return (
     <div className="relative w-full max-w-lg">
@@ -30,7 +30,7 @@ export default function CampaignSelector({ campaigns, selected, onSelect }: Camp
         {selected && (
           <span className="text-sm font-medium text-[var(--accent-orange)]">
             {selected.nombre.replace('VIRAL_DEAL_', '')}
-            <span className="text-[var(--text-muted)] ml-2 font-normal">{selected.fechaInicio}</span>
+            <span className="text-[var(--text-muted)] ml-2 font-normal">{selected.fecha}</span>
           </span>
         )}
         <ChevronDown className={`w-4 h-4 ml-auto text-[var(--text-muted)] transition-transform ${isOpen ? 'rotate-180' : ''}`} />
@@ -58,7 +58,7 @@ export default function CampaignSelector({ campaigns, selected, onSelect }: Camp
               >
                 <div>
                   <p className="text-sm font-medium">{campaign.nombre.replace('VIRAL_DEAL_', '')}</p>
-                  <p className="text-xs text-[var(--text-muted)]">{campaign.fechaInicio} | {campaign.syncIds.length} productos</p>
+                  <p className="text-xs text-[var(--text-muted)]">{campaign.fecha} | {campaign.syncIds.length} productos</p>
                 </div>
                 {isSelected && <div className="w-3 h-3 rounded-full gradient-orange" />}
               </div>

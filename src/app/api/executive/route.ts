@@ -11,7 +11,7 @@ export async function GET() {
     // For each campaign, get: GMV, discount, baseline, post-viral dip, supply readiness
     for (const campaign of campaigns) {
       const safeSyncIds = campaign.syncIds.filter(id => Number.isInteger(id)).join(',');
-      const safeDate = campaign.fechaInicio.replace(/[^0-9-]/g, '');
+      const safeDate = (campaign.fecha || '').replace(/[^0-9-]/g, '');
 
       // Query: GMV viral day + baseline (T-14 to T-2) + post-viral (T+1 to T+7)
       const sql = `
@@ -146,7 +146,7 @@ export async function GET() {
 
       for (const camp of doiCampaigns) {
         const ids = camp.syncIds.filter(id => Number.isInteger(id)).join(',');
-        const dt = camp.fechaInicio.replace(/[^0-9-]/g, '');
+        const dt = (camp.fecha || '').replace(/[^0-9-]/g, '');
         const doiSql = `
           WITH stock_pre AS (
             SELECT SUM(ic.SUM_UNITS_CUMULADO) AS S FROM RP_SILVER_DB_PROD.TURBO_CORE.GLOBAL_INVENTORY_COST ic
@@ -194,13 +194,13 @@ export async function GET() {
 
       for (const camp of retCampaigns) {
         const ids = camp.syncIds.filter(id => Number.isInteger(id)).join(',');
-        const dt = camp.fechaInicio.replace(/[^0-9-]/g, '');
+        const dt = (camp.fecha || '').replace(/[^0-9-]/g, '');
         const retSql = `
           WITH vu AS (SELECT DISTINCT o.APPLICATION_USER_ID FROM RP_SILVER_DB_PROD.TURBO_CORE.GLOBAL_ORDER_DISCOUNTS d JOIN RP_SILVER_DB_PROD.DES_PROD.ORDERS o ON o.ORDER_ID=d.ORDER_ID AND o.COUNTRY='MX' WHERE d.SYNC_PRODUCT_ID IN (${ids}) AND d.CREATED_AT=TO_DATE('${dt}') AND d.COUNTRY='MX' AND d.COUNT_TO_GMV=TRUE AND o.APPLICATION_USER_ID IS NOT NULL),
-          th AS (SELECT vu.APPLICATION_USER_ID, MIN(o.CREATED_AT)::DATE AS FT, MAX(CASE WHEN o.CREATED_AT::DATE < TO_DATE('${dt}') THEN o.CREATED_AT END)::DATE AS LT FROM vu LEFT JOIN RP_SILVER_DB_PROD.DES_PROD.ORDERS o ON o.APPLICATION_USER_ID=vu.APPLICATION_USER_ID AND o.COUNTRY='MX' AND o.STORE_TYPE_STORE LIKE '%turbo%' GROUP BY 1),
+          th AS (SELECT vu.APPLICATION_USER_ID, MIN(o.CREATED_AT)::DATE AS FT, MAX(CASE WHEN o.CREATED_AT < TO_DATE('${dt}') THEN o.CREATED_AT END)::DATE AS LT FROM vu LEFT JOIN RP_SILVER_DB_PROD.DES_PROD.ORDERS o ON o.APPLICATION_USER_ID=vu.APPLICATION_USER_ID AND o.COUNTRY='MX' AND o.STORE_TYPE_STORE ILIKE '%turbo%' AND o.CREATED_AT >= '2023-01-01'::TIMESTAMP_NTZ AND o.CREATED_AT < DATEADD(day,1,TO_DATE('${dt}')) GROUP BY 1),
           cl AS (SELECT APPLICATION_USER_ID, CASE WHEN FT IS NULL OR FT=TO_DATE('${dt}') THEN 'NEW' WHEN LT IS NOT NULL AND LT>=DATEADD(day,-30,TO_DATE('${dt}')) THEN 'EXIST' ELSE 'REACT' END AS T FROM th)
           SELECT T, COUNT(*) AS C,
-            SUM(CASE WHEN T='NEW' AND EXISTS(SELECT 1 FROM RP_SILVER_DB_PROD.DES_PROD.ORDERS o2 WHERE o2.APPLICATION_USER_ID=cl.APPLICATION_USER_ID AND o2.COUNTRY='MX' AND o2.STORE_TYPE_STORE LIKE '%turbo%' AND o2.CREATED_AT::DATE BETWEEN DATEADD(day,1,TO_DATE('${dt}')) AND DATEADD(day,30,TO_DATE('${dt}'))) THEN 1 ELSE 0 END) AS NEW_RET
+            SUM(CASE WHEN T='NEW' AND EXISTS(SELECT 1 FROM RP_SILVER_DB_PROD.DES_PROD.ORDERS o2 WHERE o2.APPLICATION_USER_ID=cl.APPLICATION_USER_ID AND o2.COUNTRY='MX' AND o2.STORE_TYPE_STORE ILIKE '%turbo%' AND o2.CREATED_AT > TO_DATE('${dt}') AND o2.CREATED_AT < DATEADD(day,31,TO_DATE('${dt}'))) THEN 1 ELSE 0 END) AS NEW_RET
           FROM cl GROUP BY 1
         `;
         const retRows = await executeQuery(retSql);
@@ -281,7 +281,7 @@ Sé brutalmente honesto. Si los datos dicen que no funciona, dilo. Máximo 300 p
     try {
       for (const camp of campaigns.slice(0, 20)) {
         const ids = camp.syncIds.filter(id => Number.isInteger(id)).join(',');
-        const dt = camp.fechaInicio.replace(/[^0-9-]/g, '');
+        const dt = (camp.fecha || '').replace(/[^0-9-]/g, '');
         const lostSql = `
           WITH wh_stock AS (SELECT DISTINCT ic.WAREHOUSE_ID FROM RP_SILVER_DB_PROD.TURBO_CORE.GLOBAL_INVENTORY_COST ic JOIN RP_SILVER_DB_PROD.TURBO_CORE.GLOBAL_WAREHOUSE_NEW w ON ic.WAREHOUSE_ID = w.WAREHOUSE_ID AND w.COUNTRY='MX' AND w.IS_CEDI=FALSE AND w.WAREHOUSE_NAME NOT LIKE '%INACTIVE%' WHERE ic.SYNC_PRODUCT_ID IN (${ids}) AND ic.COUNTRY='MX' AND ic.CREATED_AT=DATEADD(day,-1,TO_DATE('${dt}')) AND ic.SUM_UNITS_CUMULADO>0),
           wh_cap AS (SELECT WAREHOUSE_ID, COUNT(DISTINCT ORDER_ID) AS C FROM RP_SILVER_DB_PROD.TURBO_CORE.GLOBAL_ORDER_DISCOUNTS WHERE COUNTRY='MX' AND COUNT_TO_GMV=TRUE AND CREATED_AT BETWEEN DATEADD(day,-30,TO_DATE('${dt}')) AND DATEADD(day,-1,TO_DATE('${dt}')) GROUP BY 1),
