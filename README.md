@@ -152,6 +152,21 @@ npm run dev          # Dev server (localhost:3000)
 npm run build        # Build producción
 ```
 
+## Proceso de Actualización (para Cortex Code / AI Assistant)
+
+Cada vez que el usuario solicite actualizar el proyecto, se debe:
+
+1. **Ejecutar el pipeline** (`npm run export`) para re-procesar campañas desde Snowflake.
+   - Las campañas **nuevas** (sin datos en `full-data.json`) se procesan completas.
+   - Las campañas **recientes** (<90 días desde su fecha) se re-consultan siempre, aunque ya tengan datos. Esto asegura que métricas de retención, recompra y demanda post-viral se actualicen conforme pasan los días.
+   - Solo las campañas **>90 días con datos existentes** se consideran frozen y se skipean.
+
+2. **Levantar el dashboard local** (`npm run dev`) para verificación visual.
+
+3. **Esperar confirmación del usuario** antes de hacer commit.
+
+> **Regla clave**: NO se deben dejar campañas como frozen si aún no cumplen 90 días desde su fecha, ya que sus métricas de retención (15/30/45/60d) y recompra (60d) siguen evolucionando y necesitan re-consultarse en cada actualización.
+
 ## Troubleshooting
 
 - **Export tarda mucho**: Normal ~4-5h para 55 campañas en XS. El bottleneck es `DES_PROD.ORDERS` (2B rows sin clustering).
